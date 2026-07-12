@@ -4,6 +4,7 @@
 <sub>working name — rename freely: `house-rules`, `the-pact`, `ai-collab-kit`</sub>
 
 <p>
+  <a href="https://github.com/testtest126/agent-ready/actions/workflows/ci.yml"><img src="https://github.com/testtest126/agent-ready/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
   <a href="https://testtest126.github.io/agent-ready/"><img src="https://img.shields.io/badge/docs-deep%20dives-6cb6ff.svg" alt="Documentation"></a>
   <img src="https://img.shields.io/badge/dependencies-none-brightgreen.svg" alt="No dependencies">
