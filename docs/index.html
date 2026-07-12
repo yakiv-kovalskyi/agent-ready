@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agent-ready &mdash; docs</title>
+<meta name="description" content="Technical deep-dives for agent-ready: the coordination model and the architecture of agent context.">
+<link rel="stylesheet" href="assets/agent-ready.css">
+<script src="assets/theme.js"></script>
+</head>
+<body>
+
+<nav class="bar"><div class="wrap">
+  <a class="brand" href="index.html"><b>agent-ready</b> / docs</a>
+  <a href="coordination.html">coordination</a>
+  <a href="architecture.html">architecture</a>
+  <span class="spring"></span>
+  <a href="https://github.com/testtest126/agent-ready">github</a>
+  <button class="theme-btn" onclick="__toggleTheme()">theme</button>
+</div></nav>
+
+<header class="doc"><div class="wrap">
+  <div class="eyebrow">Technical documentation</div>
+  <h1>The theory behind the kit</h1>
+  <p class="standfirst">agent-ready is a small, context-free set of conventions for working with AI agents on code. These two deep-dives are the reasoning underneath &mdash; written for developers and software architects standing up serious AI collaboration, at maximum technical depth.</p>
+  <div class="meta">Not the getting-started guide &mdash; that is the <a href="https://github.com/testtest126/agent-ready#readme">README</a>. This is the why.</div>
+</div></header>
+
+<main><div class="wrap">
+  <section>
+    <div class="snum">01</div>
+    <h2><a href="coordination.html">The Coordination Model</a></h2>
+    <p>Multi-agent collaboration on a shared codebase, framed as a distributed-systems problem: identity under a shared credential, durable vs. volatile channels, why green-at-the-branch is not green-at-the-merge, the single-writer serialization point, at-least-once delivery, and the economics that decide whether you need any of it. &rarr; <a href="coordination.html">read</a></p>
+  </section>
+  <section>
+    <div class="snum">02</div>
+    <h2><a href="architecture.html">Architecture</a></h2>
+    <p>The architecture of agent <em>context</em>: context as an interface, a single source of truth with thin per-tool adapters, layered composition and precedence, the durable memory tier, the testability pattern, the security checkpoint, and the design rationale that ties it together. &rarr; <a href="architecture.html">read</a></p>
+  </section>
+</div></main>
+
+<footer><div class="wrap">
+  agent-ready &middot; <a href="https://github.com/testtest126/agent-ready">github.com/testtest126/agent-ready</a> &middot; MIT
+</div></footer>
+</body>
+</html>

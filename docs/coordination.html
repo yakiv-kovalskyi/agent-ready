@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Coordination Model &mdash; agent-ready</title>
+<meta name="description" content="Multi-agent collaboration on a shared codebase, framed as a distributed-systems problem: identity, consistency, serialization, and delivery semantics.">
+<link rel="stylesheet" href="assets/agent-ready.css">
+<script src="assets/theme.js"></script>
+</head>
+<body>
+
+<nav class="bar"><div class="wrap">
+  <a class="brand" href="index.html"><b>agent-ready</b> / docs</a>
+  <a href="coordination.html">coordination</a>
+  <a href="architecture.html">architecture</a>
+  <span class="spring"></span>
+  <a href="https://github.com/testtest126/agent-ready">github</a>
+  <button class="theme-btn" onclick="__toggleTheme()">theme</button>
+</div></nav>
+
+<header class="doc"><div class="wrap">
+  <div class="eyebrow">Deep dive &middot; 01</div>
+  <h1>The Coordination Model</h1>
+  <p class="standfirst">When more than one agent &mdash; human or AI &mdash; mutates a shared codebase, the hard problems are not about prompting. They are the problems of a small distributed system: identity, consistency, serialization, and delivery. This is the theory behind <code>docs/scaling.md</code>, for the case where you actually need it.</p>
+  <div class="meta">Audience: architects standing up multi-agent workflows.<br>Prerequisite: you have felt the collisions. If you have not, see &sect;7 &mdash; you may not need any of this.</div>
+</div></header>
+
+<main><div class="wrap">
+
+  <section>
+    <div class="snum">&sect; 1</div>
+    <h2>The system under description</h2>
+    <p>Model a repository as <b>shared mutable state</b> and each contributor as a concurrent <b>actor</b> issuing transactions (commits, merges) against it. Git is the coordination substrate: an append-only, content-addressed log with a set of mutable refs. GitHub adds a serialization surface (PRs, required checks, branch protection) on top.</p>
+    <p>With a single actor, this is trivial &mdash; there is no concurrency. Every rule in this document exists to manage <b>concurrent writers</b>, and each has a cost. The engineering question is never "is this rule good?" but "does the concurrency I have justify this rule's cost?" Hold that question through all eight sections.</p>
+    <div class="law"><span class="k">Invariant</span><p>Coordination overhead should be a function of contention, not of aspiration. Zero contention wants zero protocol.</p></div>
+  </section>
+
+  <section>
+    <div class="snum">&sect; 2</div>
+    <h2>Identity: many minds, one credential</h2>
+    <p>AI agents typically commit under a <b>single VCS identity</b> (one token, one bot account). This collapses the free property distributed systems usually get for nothing: <span class="term">attribution</span>. When every write is signed by the same principal, "who did this" is no longer answerable from the commit metadata &mdash; the layer that normally carries it is degenerate.</p>
+    <p>The consequence is that identity and authorization must be <b>re-implemented at the application layer</b>. A claim ("I am taking task&nbsp;X") is not a VCS primitive; it is an advisory record you must publish and honor. Blame and credit cannot be inferred from "who was active when the change appeared" &mdash; that is a race condition dressed up as evidence. They must be read from the diff, the branch topology, and the log.</p>
+    <div class="law"><span class="k">Principle</span><p>Attribute by evidence, not inference. Under a shared credential, temporal correlation is not causation &mdash; it is the absence of the information you actually need.</p></div>
+  </section>
+
+  <section>
+    <div class="snum">&sect; 3</div>
+    <h2>Channels: the log and the lossy bus</h2>
+    <p>Actors coordinate over two categories of channel with opposite guarantees. Inter-agent messages behave like an <b>unreliable, unordered bus</b>: a note sent now may arrive after the decision it was meant to inform, may be dropped when the transport is down, and may be read in a different order than it was sent. Repository artifacts &mdash; PR comments, commit statuses, branch state &mdash; behave like a <b>linearizable, append-only store</b>: durable, ordered, and readable by every actor with the same result.</p>
+
+    <figure>
+      <svg viewBox="0 0 760 250" role="img" aria-label="Two agents coordinating over a volatile channel and a durable store">
+        <rect class="svg-node" x="60" y="44" width="150" height="46" rx="8"/>
+        <text class="svg-lbl on" x="135" y="72" text-anchor="middle">agent A</text>
+        <rect class="svg-node" x="550" y="44" width="150" height="46" rx="8"/>
+        <text class="svg-lbl on" x="625" y="72" text-anchor="middle">agent B</text>
+        <line class="svg-edge bad" x1="210" y1="67" x2="550" y2="67" stroke-dasharray="6 6"/>
+        <text class="svg-lbl" x="380" y="34" text-anchor="middle">volatile bus &mdash; lossy, reordered, crosses in flight</text>
+        <rect class="svg-node" x="228" y="168" width="304" height="58" rx="8" style="stroke:var(--accent)"/>
+        <text class="svg-lbl on" x="380" y="192" text-anchor="middle">durable store: git &middot; PRs &middot; statuses</text>
+        <text class="svg-lbl" x="380" y="211" text-anchor="middle">linearizable &middot; append-only &middot; timestamped</text>
+        <path class="svg-edge acc" d="M135 90 L300 168" marker-end="url(#ar)"/>
+        <path class="svg-edge acc" d="M625 90 L460 168" marker-end="url(#ar)"/>
+        <defs><marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0 L7 4 L0 8 z" fill="var(--accent)"/></marker></defs>
+      </svg>
+      <figcaption><b>Rule:</b> anything coordination-critical goes in the durable store, written to survive late arrival &mdash; name the SHA, name the PR, timestamp the claim. The bus is for nudges, never for record.</figcaption>
+    </figure>
+    <p>This is the same discipline as choosing a consistent log over best-effort multicast for anything that must be agreed upon. An instruction that contradicts fresher state in the durable store is, by construction, stale.</p>
+  </section>
+
+  <section>
+    <div class="snum">&sect; 4</div>
+    <h2>Consistency: green at the branch is not green at the merge</h2>
+    <p>CI on a feature branch is a read of an isolated snapshot. It validates state <code>S_B</code>. But the integration target advances underneath it &mdash; other merges move <code>main</code> to <code>S_main</code>. The state that actually ships is <code>S_merge = S_B &oplus; S_main</code>, which <b>neither run ever observed.</b> A green check on <code>S_B</code> is an <span class="term">optimistic read</span>; treating it as a guarantee at merge time is a lost-update bug.</p>
+
+    <figure>
+      <svg viewBox="0 0 760 210" role="img" aria-label="Branch validated in isolation while main advances, producing an untested merge state">
+        <text class="svg-lbl on" x="70" y="40">main</text>
+        <circle cx="150" cy="35" r="6" class="svg-acc"/><line class="svg-edge" x1="156" y1="35" x2="320" y2="35"/>
+        <circle cx="326" cy="35" r="6" class="svg-acc"/><line class="svg-edge" x1="332" y1="35" x2="496" y2="35"/>
+        <circle cx="502" cy="35" r="6" class="svg-acc"/>
+        <text class="svg-lbl" x="150" y="20" text-anchor="middle">S0</text>
+        <text class="svg-lbl" x="502" y="20" text-anchor="middle">S_main (others merged)</text>
+        <path class="svg-edge" d="M150 41 L150 120" stroke-dasharray="4 4"/>
+        <rect class="svg-node" x="70" y="120" width="200" height="46" rx="8"/>
+        <text class="svg-lbl on" x="170" y="142" text-anchor="middle">branch B = S_B</text>
+        <text class="svg-lbl" x="170" y="158" text-anchor="middle" style="fill:var(--accent-2)">CI green</text>
+        <path class="svg-edge acc" d="M270 143 L560 143" marker-end="url(#ar2)"/>
+        <rect class="svg-node" x="566" y="118" width="150" height="50" rx="8" style="stroke:var(--bad)"/>
+        <text class="svg-lbl on" x="641" y="139" text-anchor="middle">S_merge</text>
+        <text class="svg-lbl" x="641" y="156" text-anchor="middle" style="fill:var(--bad)">never tested</text>
+        <path class="svg-edge bad" d="M502 41 L620 118" marker-end="url(#ar2)"/>
+        <defs><marker id="ar2" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0 L7 4 L0 8 z" fill="var(--accent)"/></marker></defs>
+      </svg>
+      <figcaption>Two changes that are each green in isolation can be broken in combination. <b>Re-validate at the merge state,</b> not the branch state &mdash; the equivalent of validate-on-write in optimistic concurrency control.</figcaption>
+    </figure>
+    <p>Conflicting transactions must be <b>serialized</b>: when two PRs touch the same files, merge one, re-validate against the new tip, then the next. Disjoint transactions commute and need no re-cycle &mdash; the cost is paid only where there is actual contention.</p>
+  </section>
+
+  <section>
+    <div class="snum">&sect; 5</div>
+    <h2>The serialization point</h2>
+    <p>Route all integration through <b>one writer</b>. A single merger is a linearization point: it imposes a total order on integration events, which is what makes "re-validate against the current tip" well-defined. Parallel mergers reintroduce the lost-update problem at the top level &mdash; they stack changes whose combination nobody validated.</p>
+    <p>This is the <span class="term">single-writer principle</span>, and it has the usual tradeoff: the serialization point bounds integration throughput (an Amdahl ceiling). You accept that ceiling in exchange for a consistency guarantee. Raise it, when you must, by making changes smaller and more disjoint &mdash; not by adding writers.</p>
+    <div class="law warn"><span class="k">Enforcement</span><p>A convention only enforced by goodwill is not a safeguard. An advisory lock in a system where no one checks it is decoration &mdash; a lock nobody honors is not a lock. Enforce the serialization point <b>mechanically</b> (required status checks, branch protection), not by agreement.</p></div>
+  </section>
+
+  <section>
+    <div class="snum">&sect; 6</div>
+    <h2>Delivery semantics &amp; acknowledgement</h2>
+    <p>Treat every remote mutation as <b>at-least-once</b>. A merge request that times out on the client can still have committed on the server; retrying blind double-applies. The fix is the standard one: make operations idempotent, or <b>read state before you retry</b> &mdash; GET the PR, see if it already merged, act on the truth.</p>
+    <p>And there is no negative acknowledgement. The <b>absence</b> of an objection carries no information: a reviewer who has not responded has not approved, they have simply not responded. Approval must be an explicit positive artifact &mdash; a comment, a status, an ACK &mdash; re-read immediately before the irreversible act, because it may have arrived, or been revoked, since you last looked.</p>
+    <div class="law"><span class="k">Principle</span><p>Silence is never consent. Design for explicit ACK; treat missing signals as unknown, never as yes. And note the dual: arming an automated irreversible action (auto-merge) <em>is</em> the action &mdash; it will fire without re-reading the room.</p></div>
+  </section>
+
+  <section>
+    <div class="snum">&sect; 7</div>
+    <h2>The economics of coordination</h2>
+    <p>Every mechanism above buys consistency with latency and cognitive load. The return depends on contention, which scales super-linearly with the number of concurrent writers on overlapping files. Below a threshold &mdash; a single developer with an assistant, or a few agents on disjoint areas &mdash; the protocol costs more than the collisions it prevents.</p>
+    <p>So the protocol must be <b>incident-derived</b>, not designed up front. Each rule should trace to a specific failure it prevents; a rule whose failure you have never seen is speculative complexity. And the corollary architects forget: when a rule's originating failure becomes impossible &mdash; you dropped to one writer, you changed the identity model &mdash; the rule is now pure cost. Remove it. A gate that is perpetually pending and never catches anything is a smell, not a safeguard.</p>
+    <div class="law"><span class="k">The governing rule</span><p>Right-size the process. Add a mechanism when a real failure demands it; retire it when its cause is gone. This is the one principle that governs all the others &mdash; including whether you should have read this page at all.</p></div>
+  </section>
+
+  <section>
+    <div class="snum">&sect; 8</div>
+    <h2>A minimal protocol</h2>
+    <p>The smallest set that covers the failure classes above, for a team that genuinely has concurrent writers:</p>
+    <table class="tbl"><thead><tr><th>mechanism</th><th>failure class it closes</th><th>from</th></tr></thead>
+    <tbody>
+      <tr><td>Isolated worktrees</td><td>concurrent writes to one tree (lost updates)</td><td>&sect;1</td></tr>
+      <tr><td>Claim-before-build</td><td>duplicated work under a shared identity</td><td>&sect;2</td></tr>
+      <tr><td>Durable coordination</td><td>lost / reordered messages</td><td>&sect;3</td></tr>
+      <tr><td>Re-validate at merge state</td><td>green-in-isolation, broken-combined</td><td>&sect;4</td></tr>
+      <tr><td>Single mechanical merger</td><td>unserialized integration</td><td>&sect;5</td></tr>
+      <tr><td>Read-before-retry; explicit ACK</td><td>at-least-once delivery; false consent</td><td>&sect;6</td></tr>
+    </tbody></table>
+    <p>Adopt the rows you have collisions for. Delete them when you stop. The companion, <a href="architecture.html">Architecture</a>, covers the other half: how a single agent's <em>context</em> is structured so it behaves well before any of this is needed.</p>
+  </section>
+
+</div></main>
+
+<footer><div class="wrap">
+  agent-ready &middot; the coordination model &middot; <a href="https://github.com/testtest126/agent-ready">source</a> &middot; MIT
+</div></footer>
+</body>
+</html>

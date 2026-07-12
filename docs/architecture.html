@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture &mdash; agent-ready</title>
+<meta name="description" content="The architecture of agent context: context as an interface, single-source-of-truth with adapters, the memory tier, testability, and design rationale.">
+<link rel="stylesheet" href="assets/agent-ready.css">
+<script src="assets/theme.js"></script>
+</head>
+<body>
+
+<nav class="bar"><div class="wrap">
+  <a class="brand" href="index.html"><b>agent-ready</b> / docs</a>
+  <a href="coordination.html">coordination</a>
+  <a href="architecture.html">architecture</a>
+  <span class="spring"></span>
+  <a href="https://github.com/testtest126/agent-ready">github</a>
+  <button class="theme-btn" onclick="__toggleTheme()">theme</button>
+</div></nav>
+
+<header class="doc"><div class="wrap">
+  <div class="eyebrow">Deep dive &middot; 02</div>
+  <h1>Architecture</h1>
+  <p class="standfirst">An AI agent's behavior is a function of its <b>context</b> &mdash; the assembled instructions, memory, tool schemas, and repository state it reasons over. Designing that assembly is interface design. This is the architecture of the context, and of the kit that structures it.</p>
+  <div class="meta">Audience: architects deciding how AI collaboration is structured in a serious codebase.<br>Companion: <a href="coordination.html">The Coordination Model</a> (the multi-writer half).</div>
+</div></header>
+
+<main><div class="wrap">
+
+  <section>
+    <div class="snum">&sect; 1</div>
+    <h2>Context is an interface</h2>
+    <p>An agent does not "know" your project; it reasons over whatever is assembled into its context window &mdash; the system prompt, the repo's agent instructions, retrieved memory, tool schemas, and the files in view. That assembly is the <b>API between developer intent and agent action.</b> Its qualities are ordinary interface qualities: it should be <span class="term">unambiguous</span>, <span class="term">current</span>, <span class="term">consistent</span>, and <span class="term">minimal</span>.</p>
+    <p>Most "the agent did something dumb" failures are interface defects: instructions that contradict each other across files, stale conventions no one deleted, or a contract so vague that the model fills the gap with a guess. The kit treats context as a designed surface, with one contract at its center.</p>
+  </section>
+
+  <section>
+    <div class="snum">&sect; 2</div>
+    <h2>Single source of truth, thin adapters</h2>
+    <p>Every tool wants its instructions in a different file &mdash; <code>CLAUDE.md</code>, <code>.github/copilot-instructions.md</code>, <code>.cursor/rules</code>, and more. Maintaining <code>N</code> independent rule-sets across <code>N</code> tools guarantees divergence: they drift, contradict, and rot at different rates. This is the classic duplication failure, and the classic fix applies.</p>
+
+    <figure>
+      <svg viewBox="0 0 760 250" role="img" aria-label="One canonical AGENTS.md with thin per-tool adapters pointing to it">
+        <rect class="svg-node" x="280" y="26" width="200" height="50" rx="8" style="stroke:var(--accent)"/>
+        <text class="svg-lbl on" x="380" y="48" text-anchor="middle">AGENTS.md</text>
+        <text class="svg-lbl" x="380" y="65" text-anchor="middle">the canonical contract</text>
+        <rect class="svg-node" x="52" y="150" width="176" height="44" rx="8"/>
+        <text class="svg-lbl on" x="140" y="177" text-anchor="middle">CLAUDE.md</text>
+        <rect class="svg-node" x="286" y="150" width="188" height="44" rx="8"/>
+        <text class="svg-lbl on" x="380" y="177" text-anchor="middle">copilot-instructions</text>
+        <rect class="svg-node" x="532" y="150" width="176" height="44" rx="8"/>
+        <text class="svg-lbl on" x="620" y="177" text-anchor="middle">.cursor/rules</text>
+        <path class="svg-edge acc" d="M140 150 L330 76" marker-end="url(#a)"/>
+        <path class="svg-edge acc" d="M380 150 L380 78" marker-end="url(#a)"/>
+        <path class="svg-edge acc" d="M620 150 L430 76" marker-end="url(#a)"/>
+        <text class="svg-lbl" x="140" y="228" text-anchor="middle">Claude Code</text>
+        <text class="svg-lbl" x="380" y="228" text-anchor="middle">GitHub Copilot</text>
+        <text class="svg-lbl" x="620" y="228" text-anchor="middle">Cursor</text>
+        <defs><marker id="a" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0 L7 4 L0 8 z" fill="var(--accent)"/></marker></defs>
+      </svg>
+      <figcaption>One canonical <b>AGENTS.md</b>; each tool file is a three-line adapter that points to it. Write the rules once; every tool reads the same contract. The adapters carry <b>zero</b> policy of their own &mdash; they are pure indirection.</figcaption>
+    </figure>
+    <p>In module terms, <code>AGENTS.md</code> is a <b>deep module</b>: one small interface (a file you open) hiding the entire working agreement. The adapters practice information hiding &mdash; each conceals its tool's idiosyncratic filename and format behind the same pointer.</p>
+  </section>
+
+  <section>
+    <div class="snum">&sect; 3</div>
+    <h2>Layered composition &amp; precedence</h2>
+    <p>The kit is layered so a project adopts only what it needs. A <b>universal core</b> (the working agreement, the memory tier, the principles) applies to any repo with an agent in it. An <b>optional module</b> (multi-agent coordination) is added only under real contention. Complexity is opt-in, not inherited.</p>
+    <p>When sources of truth conflict, precedence is fixed and must be honored top-down:</p>
+    <figure>
+      <svg viewBox="0 0 760 236" role="img" aria-label="Precedence order: user words over project system over kit contract over kit defaults">
+        <rect x="120" y="24"  width="520" height="40" rx="6" class="svg-node" style="stroke:var(--accent)"/>
+        <text class="svg-lbl on" x="380" y="49" text-anchor="middle">the user's explicit words, right now</text>
+        <rect x="120" y="76"  width="520" height="40" rx="6" class="svg-node"/>
+        <text class="svg-lbl on" x="380" y="101" text-anchor="middle">the project's own existing system &amp; conventions</text>
+        <rect x="120" y="128" width="520" height="40" rx="6" class="svg-node"/>
+        <text class="svg-lbl on" x="380" y="153" text-anchor="middle">AGENTS.md &mdash; this kit's contract</text>
+        <rect x="120" y="180" width="520" height="40" rx="6" class="svg-node"/>
+        <text class="svg-lbl on" x="380" y="205" text-anchor="middle">kit defaults &amp; principles</text>
+        <path class="svg-edge acc" d="M92 210 L92 34" marker-end="url(#p)"/>
+        <text class="svg-lbl" x="70" y="120" text-anchor="middle" transform="rotate(-90 70 120)">precedence &mdash; higher wins</text>
+        <defs><marker id="p" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0 L7 4 L0 8 z" fill="var(--accent)"/></marker></defs>
+      </svg>
+      <figcaption>The kit <b>fills gaps</b>; it never overrides the project or the person. A default that fights the codebase yields to the codebase; both yield to what the developer just said.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <div class="snum">&sect; 4</div>
+    <h2>The memory tier</h2>
+    <p>Agents are effectively <b>stateless across sessions</b>. Durable memory is the persistence layer that survives the reset: file-based records, each a durable fact that would otherwise be re-derived, fronted by an index (<code>MEMORY.md</code>) loaded at session start. Frontmatter on each record (a one-line <code>description</code>, a type) is the <b>retrieval signal</b> &mdash; enough to decide relevance without reading the record.</p>
+    <p>At this scale a curated file store beats a vector database: higher precision, zero infrastructure, human-auditable, and diffable in the same PR as the code it describes. The cost is discipline &mdash; records are point-in-time and must be kept current. A stale memory has <b>negative</b> value: it is confidently wrong, and worse than none.</p>
+    <div class="law"><span class="k">Property</span><p>Memory is a write-through cache of hard-won knowledge, not an append-only log. Correcting and deleting is as important as writing.</p></div>
+  </section>
+
+  <section>
+    <div class="snum">&sect; 5</div>
+    <h2>Testability architecture</h2>
+    <p>"Verify, don't assume" is an observability stance: assert on the behavior you can observe, not a proxy for it. "Tests pass" is a proxy; "the change does the thing, exercised end to end" is the observation. The structural pattern that makes this cheap is <b>logic in a tested core, a thin skin on top</b> &mdash; push decisions into a fast-testing package, keep the IO/UI layer minimal, and the risky part is the part you can prove.</p>
+    <div class="law"><span class="k">Technique</span><p>Revert-to-prove-red is hand-run mutation testing: a regression test that still passes when you undo the fix proves nothing. Confirm the test fails on the broken code before you trust it on the fixed code.</p></div>
+  </section>
+
+  <section>
+    <div class="snum">&sect; 6</div>
+    <h2>The security checkpoint</h2>
+    <p>Some diff classes &mdash; auth, tokens, crypto, sessions, access control &mdash; carry outsized blast radius and get a review gate before merge. The non-obvious requirement is on the <b>tests</b>: they must be able to fail on the vulnerability. A test that signs its own fixtures with the very key the code trusts will pass on a forged input too; it validates nothing. If a test cannot go red on the real bug class, it is not a gate.</p>
+    <p>Where the language allows, promote the invariant from a test to the type system &mdash; <span class="term">define the error out of existence.</span> An enum with no case for a forbidden capability cannot be misused; the compiler is a cheaper, stricter reviewer than CI.</p>
+  </section>
+
+  <section>
+    <div class="snum">&sect; 7</div>
+    <h2>Composition into a project</h2>
+    <p>The kit installs as plain files (idempotent, non-destructive) and coexists with whatever is already there &mdash; it adds an <code>AGENTS.md</code>, adapters, and a <code>memory/</code> scaffold, and touches nothing else. There is no runtime, no dependency, no framework: the artifacts are read by tools you already run. Removing it is deleting files. That reversibility is a feature &mdash; adoption should never be a lock-in.</p>
+  </section>
+
+  <section>
+    <div class="snum">&sect; 8</div>
+    <h2>Design rationale</h2>
+    <p>The kit is an argument that the discipline of good software design applies to the design of agent context itself:</p>
+    <ul class="tight">
+      <li><b>Deep modules.</b> <code>AGENTS.md</code> is one shallow interface over the whole agreement; the adapters hide tool-specific format behind identical indirection.</li>
+      <li><b>Define errors out of existence.</b> The strongest guardrail is one the code cannot violate &mdash; enforced by types, not comments or reviews.</li>
+      <li><b>Complexity is incremental.</b> Every rule is a cost; add on real failure, remove when its cause is gone. A mechanism that never catches anything is not rigor, it is debt &mdash; the through-line to <a href="coordination.html">&sect;7 of the coordination model</a>.</li>
+    </ul>
+    <p>The point of all of it is to make the repository <b>smaller to reason about</b> &mdash; for the human and the agent alike &mdash; not larger.</p>
+  </section>
+
+</div></main>
+
+<footer><div class="wrap">
+  agent-ready &middot; architecture &middot; <a href="https://github.com/testtest126/agent-ready">source</a> &middot; MIT
+</div></footer>
+</body>
+</html>

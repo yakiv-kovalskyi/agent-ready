@@ -42,6 +42,23 @@ repo is agent-ready.
 - **`docs/scaling.md`** — optional multi-agent coordination, for when one repo has
   many agents at once. Most projects never need it — and the kit says so.
 
+## Deep dives
+
+The reasoning underneath the kit, at maximum technical depth — for developers and
+software architects standing up serious AI collaboration:
+
+- **[The Coordination Model →](https://testtest126.github.io/agent-ready/coordination.html)**
+  Multi-agent collaboration framed as a distributed-systems problem: identity
+  under a shared credential, durable vs. volatile channels, why green-at-the-branch
+  is not green-at-the-merge, the single-writer serialization point, at-least-once
+  delivery, and the economics that decide whether you need any of it.
+- **[Architecture →](https://testtest126.github.io/agent-ready/architecture.html)**
+  Agent *context* as an interface: single-source-of-truth with thin per-tool
+  adapters, layered composition and precedence, the durable memory tier, the
+  testability pattern, and the design rationale that ties it together.
+
+Rendered from [`docs/`](docs) via GitHub Pages; diagrams and dark/light included.
+
 ## The meta-principle
 
 Everything here is optional, and adding a rule you can't yet justify is a cost,
