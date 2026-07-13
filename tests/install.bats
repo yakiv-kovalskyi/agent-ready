@@ -12,15 +12,23 @@ teardown() {
   rm -rf "$WORK"
 }
 
+# Map a template's absolute path to the path install.sh should produce, relative
+# to the target (adapters/* land at the target root — same rule as the installer).
+template_dest() {
+  rel="${1#"$KIT"/templates/}"
+  case "$rel" in
+    adapters/*) rel="${rel#adapters/}" ;;
+  esac
+  printf '%s\n' "$rel"
+}
+
+# The full set of expected files, derived from templates/ rather than hardcoded.
+# Kept dynamic on purpose: drop a file into templates/ and both the installer and
+# these tests cover it, with nothing to hand-maintain here.
 expected_files() {
-  cat <<'EOF'
-AGENTS.md
-CLAUDE.md
-.github/copilot-instructions.md
-.cursor/rules/agents.mdc
-memory/MEMORY.md
-memory/EXAMPLE.md
-EOF
+  find "$KIT/templates" -type f | sort | while IFS= read -r src; do
+    template_dest "$src"
+  done
 }
 
 @test "fresh install copies every expected file" {
@@ -33,12 +41,9 @@ EOF
 
 @test "installed files are byte-identical to their templates" {
   "$INSTALL" "$WORK" >/dev/null
-  diff "$WORK/AGENTS.md" "$KIT/templates/AGENTS.md"
-  diff "$WORK/CLAUDE.md" "$KIT/templates/adapters/CLAUDE.md"
-  diff "$WORK/.github/copilot-instructions.md" "$KIT/templates/adapters/.github/copilot-instructions.md"
-  diff "$WORK/.cursor/rules/agents.mdc" "$KIT/templates/adapters/.cursor/rules/agents.mdc"
-  diff "$WORK/memory/MEMORY.md" "$KIT/templates/memory/MEMORY.md"
-  diff "$WORK/memory/EXAMPLE.md" "$KIT/templates/memory/EXAMPLE.md"
+  while IFS= read -r src; do
+    diff "$WORK/$(template_dest "$src")" "$src" || return 1
+  done < <(find "$KIT/templates" -type f)
 }
 
 @test "default target is the current directory" {
